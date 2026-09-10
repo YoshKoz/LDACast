@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "LdacWinUI (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "LdacWinUI (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

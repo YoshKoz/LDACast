@@ -1,0 +1,16 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/btstack-sys",
+    "crates/ldac-sys",
+    "crates/capture",
+    "crates/ldacsrc",
+    "crates/ldacgui",
+]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.98"
+
+[profile.release]
+debug = true

@@ -1,0 +1,8 @@
+Pre-WinUSB state captured 2026-08-16T14:49:32
+InstanceId: USB\VID_0A12&PID_0001\6&1B2B7D3C&0&1
+DEVPKEY_Device_DriverDesc = Generic Bluetooth Radio
+DEVPKEY_Device_DriverVersion = 10.0.26100.8972
+DEVPKEY_Device_Service = BTHUSB
+DEVPKEY_Device_DriverInfPath = bth.inf
+DEVPKEY_Device_HardwareIds = USB\VID_0A12&PID_0001&REV_8891, USB\VID_0A12&PID_0001
+DEVPKEY_Device_LocationInfo = Port_#0001.Hub_#0004

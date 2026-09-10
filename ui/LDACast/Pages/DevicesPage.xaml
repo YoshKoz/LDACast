@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="LDACast.Pages.DevicesPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24,16,24,16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Devices" />
+        <TextBox
+            x:Name="SearchBox"
+            Grid.Row="1"
+            MaxWidth="400"
+            HorizontalAlignment="Left"
+            PlaceholderText="Search devices"
+            TextChanged="SearchBox_TextChanged" />
+
+        <GridView
+            x:Name="DeviceGrid"
+            Grid.Row="2"
+            SelectionMode="Single"
+            IsItemClickEnabled="False">
+            <GridView.ItemTemplate>
+                <DataTemplate>
+                    <Grid
+                        Width="300"
+                        Padding="16"
+                        Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        RowSpacing="6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock
+                            FontSize="16"
+                            FontWeight="SemiBold"
+                            Text="{Binding Name}" />
+                        <TextBlock
+                            Grid.Row="1"
+                            Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                            Text="{Binding Addr}" />
+                        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
+                            <ComboBox
+                                Header="CODEC quality"
+                                SelectedItem="{Binding Quality, Mode=TwoWay}">
+                                <x:String>hq</x:String>
+                                <x:String>sq</x:String>
+                                <x:String>mq</x:String>
+                            </ComboBox>
+                            <CheckBox
+                                VerticalAlignment="Bottom"
+                                Content="ABR"
+                                IsChecked="{Binding Abr, Mode=TwoWay}" />
+                        </StackPanel>
+                        <Button
+                            Grid.Row="3"
+                            HorizontalAlignment="Stretch"
+                            Click="Stream_Click"
+                            Content="Stream"
+                            Style="{StaticResource AccentButtonStyle}"
+                            Tag="{Binding}" />
+                    </Grid>
+                </DataTemplate>
+            </GridView.ItemTemplate>
+        </GridView>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+            <TextBox
+                x:Name="NewNameBox"
+                Width="180"
+                PlaceholderText="Name" />
+            <TextBox
+                x:Name="NewAddrBox"
+                Width="180"
+                PlaceholderText="AA:BB:CC:DD:EE:FF" />
+            <Button Click="Add_Click" Content="Add device" />
+            <Button Click="Remove_Click" Content="Remove selected" />
+            <TextBlock
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Quality applies on (re)connect. hq 909/990 · sq 606/660 · mq 303/330 kbps." />
+        </StackPanel>
+    </Grid>
+</Page>

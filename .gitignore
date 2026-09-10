@@ -1,0 +1,16 @@
+# build outputs
+target/
+ui/LDACast/bin/
+ui/LDACast/obj/
+
+# runtime artifacts (personal link keys, packet logs, local logs)
+*.pklg
+*_link_keys.tlv
+btstack_*.tlv
+*.log
+
+# IDE / OS
+.vs/
+.vscode/
+Desktop.ini
+Thumbs.db

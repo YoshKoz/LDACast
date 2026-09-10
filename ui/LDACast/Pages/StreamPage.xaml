@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="LDACast.Pages.StreamPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Grid Padding="24,16,24,16" RowSpacing="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Stream" />
+
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+            <ComboBox
+                x:Name="DevicePicker"
+                Width="320"
+                Header="Device"
+                DisplayMemberPath="Name" />
+            <TextBox
+                x:Name="CaptureBox"
+                Width="220"
+                Header="Capture source (blank = default)"
+                PlaceholderText="e.g. CABLE"
+                TextChanged="CaptureBox_TextChanged" />
+            <Button
+                x:Name="StartBtn"
+                VerticalAlignment="Bottom"
+                Click="Start_Click"
+                Content="Start"
+                Style="{StaticResource AccentButtonStyle}" />
+            <Button
+                x:Name="StopBtn"
+                VerticalAlignment="Bottom"
+                Click="Stop_Click"
+                Content="Stop"
+                IsEnabled="False" />
+            <TextBlock
+                x:Name="HintText"
+                VerticalAlignment="Center"
+                Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                Visibility="Collapsed" />
+        </StackPanel>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+            <StackPanel>
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="State" />
+                <TextBlock x:Name="StateText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Column="1">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Wire rate" />
+                <TextBlock x:Name="WireText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Realtime" />
+                <TextBlock x:Name="RtText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Column="3">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Buffer" />
+                <TextBlock x:Name="BufText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="1">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="CODEC" />
+                <TextBlock x:Name="CodecText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="1">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Packets" />
+                <TextBlock x:Name="PacketsText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="2">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Overruns" />
+                <TextBlock x:Name="OverText" FontSize="18" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="1" Grid.Column="3">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Underruns" />
+                <TextBlock x:Name="UnderText" FontSize="18" Text="-" />
+            </StackPanel>
+        </Grid>
+
+        <ListView
+            x:Name="EventList"
+            Grid.Row="3"
+            SelectionMode="None" />
+    </Grid>
+</Page>
