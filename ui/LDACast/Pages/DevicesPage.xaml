@@ -7,7 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Padding="24,16,24,16" RowSpacing="12">
+    <Grid Padding="12,8,12,8" RowSpacing="8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -19,7 +19,7 @@
         <TextBox
             x:Name="SearchBox"
             Grid.Row="1"
-            MaxWidth="400"
+            MaxWidth="300"
             HorizontalAlignment="Left"
             PlaceholderText="Search devices"
             TextChanged="SearchBox_TextChanged" />
@@ -32,13 +32,13 @@
             <GridView.ItemTemplate>
                 <DataTemplate>
                     <Grid
-                        Width="300"
-                        Padding="16"
+                        Width="272"
+                        Padding="10"
                         Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
                         BorderThickness="1"
                         CornerRadius="8"
-                        RowSpacing="6">
+                        RowSpacing="4">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -46,11 +46,12 @@
                             <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock
-                            FontSize="16"
+                            FontSize="15"
                             FontWeight="SemiBold"
                             Text="{Binding Name}" />
                         <TextBlock
                             Grid.Row="1"
+                            FontSize="12"
                             Foreground="{ThemeResource TextFillColorSecondaryBrush}"
                             Text="{Binding Addr}" />
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
@@ -78,21 +79,22 @@
             </GridView.ItemTemplate>
         </GridView>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="6">
             <TextBox
                 x:Name="NewNameBox"
-                Width="180"
+                Width="140"
                 PlaceholderText="Name" />
             <TextBox
                 x:Name="NewAddrBox"
-                Width="180"
+                Width="150"
                 PlaceholderText="AA:BB:CC:DD:EE:FF" />
-            <Button Click="Add_Click" Content="Add device" />
-            <Button Click="Remove_Click" Content="Remove selected" />
+            <Button Click="Add_Click" Content="Add" />
+            <Button Click="Remove_Click" Content="Remove" />
             <TextBlock
                 VerticalAlignment="Center"
+                FontSize="12"
                 Foreground="{ThemeResource TextFillColorSecondaryBrush}"
-                Text="Quality applies on (re)connect. hq 909/990 · sq 606/660 · mq 303/330 kbps." />
+                Text="Quality applies on (re)connect. hq 909/990 - sq 606/660 - mq 303/330 kbps." />
         </StackPanel>
     </Grid>
 </Page>

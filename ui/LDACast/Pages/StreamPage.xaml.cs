@@ -19,6 +19,7 @@ public sealed partial class StreamPage : Page
         StreamSession.Instance.HealthUpdated += OnHealth;
         StreamSession.Instance.Log += OnLog;
         StreamSession.Instance.Exited += OnExited;
+        StreamSession.Instance.DetailUpdated += OnDetail;
     }
 
     protected override void OnNavigatedTo(NavigationEventArgs e)
@@ -27,7 +28,8 @@ public sealed partial class StreamPage : Page
         DevicePicker.ItemsSource = _settings.Devices;
         DevicePicker.DisplayMemberPath = "Name";
         DevicePicker.SelectedIndex = Math.Clamp(_settings.Selected, 0, _settings.Devices.Count - 1);
-        CaptureBox.Text = _settings.Capture;
+        CapturePicker.ItemsSource = Backend.ListCaptureEndpoints().Select(e => e.Name).ToList();
+        CapturePicker.Text = _settings.Capture;
         _pendingAddr = e.Parameter as string;
         RefreshButtons();
         if (_pendingAddr is { Length: > 0 } addr)
@@ -62,9 +64,9 @@ public sealed partial class StreamPage : Page
         DevicePicker.SelectedItem as DeviceEntry
         ?? (_settings.Devices.Count > 0 ? _settings.Devices[Math.Clamp(_settings.Selected, 0, _settings.Devices.Count - 1)] : null);
 
-    private void CaptureBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void CapturePicker_Changed(object sender, RoutedEventArgs e)
     {
-        _settings.Capture = CaptureBox.Text ?? "";
+        _settings.Capture = CapturePicker.Text ?? "";
         Backend.SaveSettings(_settings);
     }
 
@@ -87,6 +89,37 @@ public sealed partial class StreamPage : Page
         RefreshButtons();
     }
 
+    /// <summary>AltA2DP's "Load safe parameters": most compatible rung, no ABR.</summary>
+    private void Safe_Click(object sender, RoutedEventArgs e)
+    {
+        var dev = Current;
+        if (dev is null) return;
+        dev.Quality = "mq";
+        dev.Abr = false;
+        Backend.SaveSettings(_settings);
+        AddEvent($"safe parameters loaded for {dev.Name} (mq, ABR off) - applies on next Start");
+    }
+
+    private void Sound_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("control", "mmsys.cpl,,0") { UseShellExecute = true });
+        }
+        catch { }
+    }
+
+    private void OnDetail()
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            SinkText.Text = StreamSession.Instance.SinkCaps;
+            ConfigText.Text = StreamSession.Instance.Negotiated;
+            var cap = StreamSession.Instance.CaptureFmt;
+            CaptureText.Text = cap.StartsWith("capture: ") ? cap.Substring(9) : cap;
+        });
+    }
+
     private void OnHealth(Health h)
     {
         DispatcherQueue.TryEnqueue(() =>
@@ -95,10 +128,15 @@ public sealed partial class StreamPage : Page
             WireText.Text = $"{h.Wire} kbps";
             RtText.Text = $"{h.Rt:F2}x";
             BufText.Text = $"{h.BufferedMs} ms";
-            CodecText.Text = h.Bitrate > 0 ? $"LDAC {h.Bitrate} kbps eqmid {h.Eqmid}" : "-";
+            CodecText.Text = h.Bitrate > 0 ? $"LDAC {h.Bitrate}/{h.Eqmid}" : "-";
             PacketsText.Text = $"{h.Packets}";
             OverText.Text = $"{h.Over}";
             UnderText.Text = $"{h.Under}";
+            SinkText.Text = StreamSession.Instance.SinkCaps;
+            var cfg = StreamSession.Instance.Negotiated;
+            ConfigText.Text = cfg;
+            var cap = StreamSession.Instance.CaptureFmt;
+            CaptureText.Text = cap.StartsWith("capture: ") ? cap.Substring(9) : cap;
             if (h.Over > _lastOver && _lastOver > 0)
             {
                 HintText.Text = "overruns rising: link can't hold this bitrate — drop a rung (hq > sq > mq)";

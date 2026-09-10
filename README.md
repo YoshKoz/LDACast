@@ -16,9 +16,11 @@ encoding the WASAPI loopback mix with Sony's libldac.
 - **LDAC on Windows**: HQ (909/990 kbps), SQ (606/660), MQ (303/330), plus
   experimental ABR that steers quality from buffer depth.
 - **DLSS Swapper-style app** (`ui/LDACast`, C# / WinUI 3): device cards with
-  per-device quality + ABR, one-click radio switch, live stream health
-  (realtime ratio, wire rate, buffer, over/underruns) with an automatic
-  drop-a-rung hint when the link can't hold the bitrate.
+  per-device quality + ABR, one-click radio switch, capture-source dropdown
+  (default device or virtual cable), live stream health
+  (realtime ratio, wire rate, buffer, over/underruns, sink caps, negotiated
+  config) with an automatic drop-a-rung hint, safe-parameters button,
+  and a stability guide page.
 - **One-command radio switch** (`tools/ldacmode.ps1 status|bt|ldac`):
   hand the dongle between Windows and LDACast in seconds, no replug.
 - **Dedicated capture source** (`--capture NAME`, `--list-capture`): capture

@@ -78,6 +78,12 @@ public sealed class StreamSession
     public event Action<string>? Log;
     public event Action? Exited;
 
+    /// <summary>Last known sink capabilities / negotiated config / capture format lines.</summary>
+    public string SinkCaps { get; private set; } = "-";
+    public string Negotiated { get; private set; } = "-";
+    public string CaptureFmt { get; private set; } = "-";
+    public event Action? DetailUpdated;
+
     private Process? _child;
     private CancellationTokenSource? _cts;
     public bool Running => _child is { HasExited: false };
@@ -109,6 +115,9 @@ public sealed class StreamSession
             child.Exited += (_, _) => { if (!ct.IsCancellationRequested) Exited?.Invoke(); };
             child.Start();
             _child = child;
+            SinkCaps = "-";
+            Negotiated = "-";
+            CaptureFmt = "-";
             var capNote = string.IsNullOrWhiteSpace(capture) ? "default device" : $"capture \"{capture.Trim()}\"";
             Log?.Invoke($"streaming to {dev.Name} ({dev.Addr}) [{dev.Quality}{(dev.Abr ? "+abr" : "")}] via {capNote}");
             Task.Run(() =>
@@ -118,9 +127,19 @@ public sealed class StreamSession
                     string? line;
                     while (!ct.IsCancellationRequested && (line = child.StandardOutput.ReadLine()) != null)
                     {
+                        var t = line.Trim();
                         var h = Health.Parse(line);
                         if (h != null) HealthUpdated?.Invoke(h);
-                        else if (!string.IsNullOrWhiteSpace(line)) Log?.Invoke(line.Trim());
+                        else if (!string.IsNullOrWhiteSpace(line))
+                        {
+                            if (t.StartsWith("sink accepted", StringComparison.Ordinal)
+                                || t.StartsWith("configuring seid", StringComparison.Ordinal)) Negotiated = t;
+                            else if (t.StartsWith("sink ", StringComparison.Ordinal)) SinkCaps = t;
+                            else if (t.StartsWith("capture:", StringComparison.Ordinal)) CaptureFmt = t;
+                            else { Log?.Invoke(t); continue; }
+                            DetailUpdated?.Invoke();
+                            Log?.Invoke(t);
+                        }
                     }
                 }
                 catch { }

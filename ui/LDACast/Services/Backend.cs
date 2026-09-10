@@ -185,6 +185,39 @@ public static class Backend
 
     public static (string Mode, string Raw) RadioStatus() => RunLdacMode("status");
 
+    /// <summary>Active render endpoints via ldacsrc --list-capture ("NAME [ID]" per line).</summary>
+    public static List<(string Name, string Id)> ListCaptureEndpoints()
+    {
+        var eps = new List<(string, string)>();
+        try
+        {
+            if (!File.Exists(LdacSrcExe)) return eps;
+            using var p = new Process();
+            p.StartInfo = new ProcessStartInfo(LdacSrcExe, "--list-capture")
+            {
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = RepoRoot,
+            };
+            p.Start();
+            var text = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(15000);
+            foreach (var raw in text.Split('\n'))
+            {
+                var t = raw.Trim();
+                if (t.Length == 0) continue;
+                var i = t.LastIndexOf('[');
+                if (i > 0 && t.EndsWith(']'))
+                    eps.Add((t[..i].Trim(), t[(i + 1)..^1]));
+                else
+                    eps.Add((t, t));
+            }
+        }
+        catch { }
+        return eps;
+    }
+
     /// <summary>Runs the switch on a worker thread; ldacmode.ps1 elevates itself via UAC.</summary>
     public static void SwitchRadio(string target, Action<(string Mode, string Raw)> done)
     {

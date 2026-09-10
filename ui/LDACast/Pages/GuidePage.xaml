@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Page
+    x:Class="LDACast.Pages.GuidePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <ScrollViewer Padding="12,8,12,8">
+        <StackPanel Spacing="8" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Stability guide" />
+            <TextBlock TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                Text="Choppy sound or drops are almost always radio, not software. A2DP retransmits damaged packets; when the link can't keep up, audio gaps. Work through this list top down." />
+
+            <TextBlock FontWeight="SemiBold" Text="1. Lower the bitrate first" />
+            <TextBlock TextWrapping="Wrap" Text="HQ needs ~190 packets/s sustained, SQ ~94, MQ ~47. If MQ holds rt 1.00x and HQ doesn't, your link is the ceiling. Use Load safe parameters, then step up." />
+
+            <TextBlock FontWeight="SemiBold" Text="2. Kill 2.4 GHz interference" />
+            <TextBlock TextWrapping="Wrap" Text="Prefer 5/6 GHz WiFi or Ethernet. Move the dongle away from USB 3 ports and monitors (front-panel extension cable helps). Microwaves and baby monitors live here too." />
+
+            <TextBlock FontWeight="SemiBold" Text="3. Free the airtime" />
+            <TextBlock TextWrapping="Wrap" Text="Disconnect other Bluetooth devices (mice, keyboards eat timeslots even idle). One radio serves one stream; LDACast owns the dongle exclusively while running." />
+
+            <TextBlock FontWeight="SemiBold" Text="4. Mind multipoint and TWS" />
+            <TextBlock TextWrapping="Wrap" Text="Headphones juggling a phone plus PC interrupt the stream to ping the other device - worse at high bitrates. For testing, unpair the phone. TWS earbuds have tiny antennas and inter-bud chatter; expect a lower ceiling than over-ears." />
+
+            <TextBlock FontWeight="SemiBold" Text="5. Check the sink mode" />
+            <TextBlock TextWrapping="Wrap" Text="Sony's 'Prioritize Stable Connection' (and vendor equivalents) hides LDAC entirely. Use 'Prioritize Sound Quality'. If a codec/config that worked stops connecting, the sink changed its exposed capabilities - re-check its app." />
+
+            <TextBlock FontWeight="SemiBold" Text="6. Adapter and driver" />
+            <TextBlock TextWrapping="Wrap" Text="Class 1 adapters beat Class 2 dongles at high bitrates. Adapter drivers are usually validated only at SBC rates (~300 kbps); if HQ misbehaves, an older driver version sometimes helps." />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

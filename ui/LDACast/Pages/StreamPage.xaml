@@ -7,8 +7,9 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d">
 
-    <Grid Padding="24,16,24,16" RowSpacing="12">
+    <Grid Padding="12,8,12,8" RowSpacing="8">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
@@ -17,18 +18,20 @@
 
         <TextBlock Style="{StaticResource TitleTextBlockStyle}" Text="Stream" />
 
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8">
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
             <ComboBox
                 x:Name="DevicePicker"
-                Width="320"
+                Width="260"
                 Header="Device"
                 DisplayMemberPath="Name" />
-            <TextBox
-                x:Name="CaptureBox"
+            <ComboBox
+                x:Name="CapturePicker"
                 Width="220"
                 Header="Capture source (blank = default)"
-                PlaceholderText="e.g. CABLE"
-                TextChanged="CaptureBox_TextChanged" />
+                PlaceholderText="default device"
+                IsEditable="True"
+                SelectionChanged="CapturePicker_Changed"
+                LostFocus="CapturePicker_Changed" />
             <Button
                 x:Name="StartBtn"
                 VerticalAlignment="Bottom"
@@ -41,6 +44,16 @@
                 Click="Stop_Click"
                 Content="Stop"
                 IsEnabled="False" />
+            <Button
+                VerticalAlignment="Bottom"
+                Click="Safe_Click"
+                Content="Load safe parameters"
+                ToolTipService.ToolTip="Most compatible: MQ quality, ABR off. Applies on next Start." />
+            <Button
+                VerticalAlignment="Bottom"
+                Click="Sound_Click"
+                Content="Sound panel"
+                ToolTipService.ToolTip="Windows owns the sample rate: set the capture device to stereo 44.1/48/88.2/96 kHz here, then restart the stream." />
             <TextBlock
                 x:Name="HintText"
                 VerticalAlignment="Center"
@@ -59,43 +72,55 @@
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
-            <StackPanel>
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="State" />
-                <TextBlock x:Name="StateText" FontSize="18" Text="-" />
+            <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="State:" />
+                <TextBlock x:Name="StateText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Column="1">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Wire rate" />
-                <TextBlock x:Name="WireText" FontSize="18" Text="-" />
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Wire:" />
+                <TextBlock x:Name="WireText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Column="2">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Realtime" />
-                <TextBlock x:Name="RtText" FontSize="18" Text="-" />
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Realtime:" />
+                <TextBlock x:Name="RtText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Column="3">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Buffer" />
-                <TextBlock x:Name="BufText" FontSize="18" Text="-" />
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Buffer:" />
+                <TextBlock x:Name="BufText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Row="1">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="CODEC" />
-                <TextBlock x:Name="CodecText" FontSize="18" Text="-" />
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="CODEC:" />
+                <TextBlock x:Name="CodecText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Row="1" Grid.Column="1">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Packets" />
-                <TextBlock x:Name="PacketsText" FontSize="18" Text="-" />
+            <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Packets:" />
+                <TextBlock x:Name="PacketsText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Row="1" Grid.Column="2">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Overruns" />
-                <TextBlock x:Name="OverText" FontSize="18" Text="-" />
+            <StackPanel Grid.Row="1" Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Over:" />
+                <TextBlock x:Name="OverText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
-            <StackPanel Grid.Row="1" Grid.Column="3">
-                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Underruns" />
-                <TextBlock x:Name="UnderText" FontSize="18" Text="-" />
+            <StackPanel Grid.Row="1" Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Under:" />
+                <TextBlock x:Name="UnderText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
         </Grid>
 
+        <StackPanel Grid.Row="3" Spacing="2">
+            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
+                <Run Text="Sink: " /><Run x:Name="SinkText" Text="-" />
+            </TextBlock>
+            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
+                <Run Text="Config: " /><Run x:Name="ConfigText" Text="-" />
+            </TextBlock>
+            <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap">
+                <Run Text="Capture: " /><Run x:Name="CaptureText" Text="-" />
+            </TextBlock>
+        </StackPanel>
+
         <ListView
             x:Name="EventList"
-            Grid.Row="3"
+            Grid.Row="4"
             SelectionMode="None" />
     </Grid>
 </Page>

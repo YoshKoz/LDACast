@@ -56,6 +56,9 @@ public sealed partial class MainWindow : Window
                 case "stream":
                     NavFrame.Navigate(typeof(StreamPage));
                     break;
+                case "guide":
+                    NavFrame.Navigate(typeof(GuidePage));
+                    break;
                 default:
                     throw new InvalidOperationException($"Unknown navigation item tag: {item.Tag}");
             }
