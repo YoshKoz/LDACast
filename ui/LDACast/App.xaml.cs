@@ -1,3 +1,4 @@
+using LDACast.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Data;
@@ -26,7 +27,7 @@ public partial class App : Application
         InitializeComponent();
         UnhandledException += (s, e) =>
         {
-            try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ldacwinui-startup.log"), $"{DateTime.Now:HH:mm:ss} UNHANDLED {e.Exception}\n"); } catch { }
+            StartupLog.Write($"UNHANDLED {e.Exception}");
         };
     }
 
@@ -36,9 +37,9 @@ public partial class App : Application
     /// <param name="args">Details about the launch request and process.</param>
     protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ldacwinui-startup.log"), $"{DateTime.Now:HH:mm:ss} launched\n"); } catch { }
+        StartupLog.Write("launched");
         _window = new MainWindow();
         _window.Activate();
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ldacwinui-startup.log"), $"{DateTime.Now:HH:mm:ss} activated\n"); } catch { }
+        StartupLog.Write("activated");
     }
 }

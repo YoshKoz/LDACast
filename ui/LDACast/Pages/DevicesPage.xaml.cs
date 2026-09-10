@@ -14,7 +14,7 @@ public sealed partial class DevicesPage : Page
 
     public DevicesPage()
     {
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ldacwinui-startup.log"), $"{DateTime.Now:HH:mm:ss} devices-ctor\n"); } catch { }
+        StartupLog.Write("devices-ctor");
         InitializeComponent();
         DeviceGrid.ItemsSource = _view;
     }

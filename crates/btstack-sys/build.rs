@@ -95,6 +95,13 @@ fn main() {
         // that are not in any import library we need
         .blocklist_function("ua_.*")
         .blocklist_function("uaw_.*")
+        // redeclaring the compiler's own mem*/strlen builtins trips
+        // suspicious_runtime_symbol_definitions; nothing here calls them
+        .blocklist_function("memcpy")
+        .blocklist_function("memmove")
+        .blocklist_function("memset")
+        .blocklist_function("memcmp")
+        .blocklist_function("strlen")
         .generate()
         .expect("bindgen failed");
 

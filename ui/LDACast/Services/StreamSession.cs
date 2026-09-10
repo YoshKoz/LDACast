@@ -51,7 +51,8 @@ public sealed class Health
         return new Health
         {
             State = line[1..end],
-            BufferedMs = NumAfter(cols[1], "buffered"),
+            // "buffered" is in cols[0]; reading cols[1] silently pinned this to 0
+            BufferedMs = NumAfter(cols[0], "buffered"),
             Rt = rt,
             Fps = NumHead(fpsBpf.FirstOrDefault() ?? "0"),
             Bpf = fpsBpf.Length > 1 ? NumAfter(fpsBpf[1], "") : 0,
@@ -76,7 +77,18 @@ public sealed class StreamSession
 
     public event Action<Health>? HealthUpdated;
     public event Action<string>? Log;
-    public event Action? Exited;
+    /// <summary>Exit code: 1 capture failed, 2 unusable mix format, 4 auto Windows fallback, 5 sink cannot carry LDAC.</summary>
+    public event Action<int>? Exited;
+
+    public static string ExitReason(int code) => code switch
+    {
+        0 => "ldacsrc exited",
+        1 => "ldacsrc exited: WASAPI loopback capture failed",
+        2 => "ldacsrc exited: the playback device's format is not one LDAC can carry",
+        4 => "ldacsrc exited: stream lost, radio handed back to Windows",
+        5 => "ldacsrc exited: this sink cannot carry LDAC from this capture format",
+        _ => $"ldacsrc exited with code {code}",
+    };
 
     /// <summary>Last known sink capabilities / negotiated config / capture format lines.</summary>
     public string SinkCaps { get; private set; } = "-";
@@ -102,58 +114,93 @@ public sealed class StreamSession
         }
         try
         {
-            var args = $"--addr {dev.Addr} --quality {dev.Quality}{(dev.Abr ? " --abr" : "")}"
-                + (string.IsNullOrWhiteSpace(capture) ? "" : $" --capture \"{capture.Trim()}\"")
-                + (autoFallback ? " --auto-bt-fallback 30" : "");
-            var psi = new ProcessStartInfo(Backend.LdacSrcExe, args)
+            var child = new Process
             {
-                WorkingDirectory = Backend.RepoRoot,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
+                StartInfo = BuildStartInfo(dev, capture, autoFallback),
+                EnableRaisingEvents = true,
             };
-            var child = new Process { StartInfo = psi, EnableRaisingEvents = true };
+            _cts?.Dispose();
             _cts = new CancellationTokenSource();
             var ct = _cts.Token;
-            child.Exited += (_, _) => { if (!ct.IsCancellationRequested) Exited?.Invoke(); };
+            child.Exited += (_, _) => { if (!ct.IsCancellationRequested) Exited?.Invoke(child.ExitCode); };
             child.Start();
             _child = child;
+
             CurrentQuality = dev.Quality.ToUpperInvariant() + (dev.Abr ? "+ABR" : "");
             CurrentDevice = $"{dev.Name} ({dev.Addr})";
             SinkCaps = "-";
             Negotiated = "-";
             CaptureFmt = "-";
+
             var capNote = string.IsNullOrWhiteSpace(capture) ? "default device" : $"capture \"{capture.Trim()}\"";
             Log?.Invoke($"streaming to {dev.Name} ({dev.Addr}) [{dev.Quality}{(dev.Abr ? "+abr" : "")}] via {capNote}{(autoFallback ? ", auto Windows fallback on" : "")}");
-            Task.Run(() =>
-            {
-                try
-                {
-                    string? line;
-                    while (!ct.IsCancellationRequested && (line = child.StandardOutput.ReadLine()) != null)
-                    {
-                        var t = line.Trim();
-                        var h = Health.Parse(line);
-                        if (h != null) HealthUpdated?.Invoke(h);
-                        else if (!string.IsNullOrWhiteSpace(line))
-                        {
-                            if (t.StartsWith("sink accepted", StringComparison.Ordinal)
-                                || t.StartsWith("configuring seid", StringComparison.Ordinal)) Negotiated = t;
-                            else if (t.StartsWith("sink ", StringComparison.Ordinal)) SinkCaps = t;
-                            else if (t.StartsWith("capture:", StringComparison.Ordinal)) CaptureFmt = t;
-                            else { Log?.Invoke(t); continue; }
-                            DetailUpdated?.Invoke();
-                            Log?.Invoke(t);
-                        }
-                    }
-                }
-                catch { }
-            }, ct);
+
+            Task.Run(() => Pump(child.StandardError, ct, l => Log?.Invoke(l)), ct);
+            Task.Run(() => Pump(child.StandardOutput, ct, HandleStdoutLine), ct);
         }
         catch (Exception e)
         {
             Log?.Invoke($"spawn failed: {e.Message}");
         }
+    }
+
+    private static ProcessStartInfo BuildStartInfo(DeviceEntry dev, string capture, bool autoFallback)
+    {
+        var args = $"--addr {dev.Addr} --quality {dev.Quality}{(dev.Abr ? " --abr" : "")}"
+            + (string.IsNullOrWhiteSpace(capture) ? "" : $" --capture \"{capture.Trim()}\"")
+            + (autoFallback ? " --auto-bt-fallback 30" : "");
+        return new ProcessStartInfo(Backend.LdacSrcExe, args)
+        {
+            WorkingDirectory = Backend.RepoRoot,
+            RedirectStandardOutput = true,
+            // ldacsrc reports capture failures, unusable mix formats and bad
+            // arguments on stderr; without this the app shows nothing at all
+            // when the engine exits before it ever streams.
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+    }
+
+    /// <summary>Forwards one redirected pipe until the child closes it.</summary>
+    private static void Pump(StreamReader pipe, CancellationToken ct, Action<string> onLine)
+    {
+        try
+        {
+            string? line;
+            while (!ct.IsCancellationRequested && (line = pipe.ReadLine()) != null)
+            {
+                var t = line.Trim();
+                if (t.Length > 0) onLine(t);
+            }
+        }
+        catch
+        {
+            // The pipe is torn down when the child exits, or when the session is
+            // stopped and kills it, so there is nobody left to report this to.
+        }
+    }
+
+    /// <summary>Health lines drive the meters; the rest are detail or plain log.</summary>
+    private void HandleStdoutLine(string line)
+    {
+        var h = Health.Parse(line);
+        if (h != null)
+        {
+            HealthUpdated?.Invoke(h);
+            return;
+        }
+        if (line.StartsWith("sink accepted", StringComparison.Ordinal)
+            || line.StartsWith("configuring seid", StringComparison.Ordinal)) Negotiated = line;
+        else if (line.StartsWith("sink ", StringComparison.Ordinal)) SinkCaps = line;
+        else if (line.StartsWith("capture:", StringComparison.Ordinal)) CaptureFmt = line;
+        else
+        {
+            Log?.Invoke(line);
+            return;
+        }
+        DetailUpdated?.Invoke();
+        Log?.Invoke(line);
     }
 
     public void Stop()
@@ -164,7 +211,14 @@ public sealed class StreamSession
             if (_child is { HasExited: false })
                 _child.Kill(entireProcessTree: true);
         }
-        catch { }
+        catch
+        {
+            // The child may have exited between the check and the kill, or be
+            // outside our rights to signal; either way it is no longer ours.
+        }
+        _child?.Dispose();
         _child = null;
+        _cts?.Dispose();
+        _cts = null;
     }
 }

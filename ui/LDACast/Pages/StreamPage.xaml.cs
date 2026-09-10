@@ -107,14 +107,7 @@ public sealed partial class StreamPage : Page
         AddEvent($"safe parameters loaded for {dev.Name} (mq, ABR off) - applies on next Start");
     }
 
-    private void Sound_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("control", "mmsys.cpl,,0") { UseShellExecute = true });
-        }
-        catch { }
-    }
+    private void Sound_Click(object sender, RoutedEventArgs e) => Backend.OpenSoundControlPanel();
 
     private void OnDetail()
     {
@@ -162,11 +155,11 @@ public sealed partial class StreamPage : Page
         DispatcherQueue.TryEnqueue(() => AddEvent(line));
     }
 
-    private void OnExited()
+    private void OnExited(int code)
     {
         DispatcherQueue.TryEnqueue(() =>
         {
-            AddEvent("ldacsrc exited");
+            AddEvent(StreamSession.ExitReason(code));
             RefreshButtons();
         });
     }

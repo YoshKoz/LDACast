@@ -191,14 +191,16 @@ fn parse_status(line: &str) -> Option<Health> {
     let fps_bpf: Vec<&str> = cols[2].split(',').collect();
     Some(Health {
         state: state.to_string(),
-        buffered_ms: num_after(cols[1], "buffered"),
-        rt: cols[2 - 1]
+        buffered_ms: num_after(cols[0], "buffered"),
+        rt: cols[1]
             .split("rt")
             .nth(1)
             .and_then(|r| r.trim().trim_end_matches('x').parse().ok())
             .unwrap_or(0.0),
         fps: num_head(fps_bpf.first().unwrap_or(&"0")),
-        bpf: fps_bpf.get(1).map(|s| num_after(s, "")).unwrap_or(0),
+        // not num_after(s, ""): splitting on an empty pattern yields per-char
+        // boundaries, so nth(1) is a single character and never a number
+        bpf: fps_bpf.get(1).map(|s| num_head(s)).unwrap_or(0),
         packets: num_after(cols[3], "packets"),
         frames: num_after(cols[3].split("packets").nth(1).unwrap_or(""), "frames")
             .max(num_after(cols[3], "frames")),
@@ -398,10 +400,23 @@ impl App {
                 .map(|p| p.to_path_buf())
                 .unwrap_or_else(|| self.exe_dir.clone()),
         );
-        cmd.stdout(Stdio::piped()).stderr(Stdio::null());
+        // ldacsrc reports every fatal condition (capture failure, unusable mix
+        // format, bad arguments) on stderr; discarding it makes an early exit
+        // look like nothing happened at all.
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         match cmd.spawn() {
             Ok(mut child) => {
                 let tx = self.tx_clone();
+                if let Some(stderr) = child.stderr.take() {
+                    let tx2 = tx.clone();
+                    std::thread::spawn(move || {
+                        for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                            if tx2.send(GuiMsg::Line(line)).is_err() {
+                                break;
+                            }
+                        }
+                    });
+                }
                 if let Some(stdout) = child.stdout.take() {
                     let tx2 = tx.clone();
                     std::thread::spawn(move || {
@@ -587,6 +602,8 @@ impl eframe::App for App {
                     ui.label("realtime"); ui.strong(format!("{:.2}x", h.rt)); ui.label("buffer"); ui.strong(format!("{} ms", h.buffered_ms)); ui.end_row();
                     ui.label("codec"); ui.strong(format!("LDAC {} kbps eqmid {}", h.bitrate, h.eqmid)); ui.label("packets"); ui.strong(format!("{}", h.packets)); ui.end_row();
                     ui.label("overruns"); ui.strong(format!("{}", h.over)); ui.label("underruns"); ui.strong(format!("{}", h.under)); ui.end_row();
+                    ui.label("frames"); ui.strong(format!("{}/s, {} B", h.fps, h.bpf)); ui.label("errors"); ui.strong(format!("enc {} send {}", h.encerr, h.senderr)); ui.end_row();
+                    ui.label("frames total"); ui.strong(format!("{}", h.frames)); ui.label("reconnects"); ui.strong(format!("{}", h.reconnects)); ui.end_row();
                 });
             }
 
@@ -619,4 +636,41 @@ fn main() -> eframe::Result<()> {
         opts,
         Box::new(|cc| Ok(Box::new(App::new(cc)) as Box<dyn eframe::App>)),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Byte-for-byte the format string in crates/ldacsrc/src/main.rs.
+    const LINE: &str = "[Streaming] buffered 37 ms | rt 1.00x | 375 frame/s, 220 B/frame \
+        | packets 1250 frames 3750 | wire 660 kbps | ldac 660 kbps eqmid 1 \
+        | over 4 under 2 | encerr 0 senderr 3 | reconnects 1";
+
+    #[test]
+    fn parses_every_column_of_a_real_status_line() {
+        let h = parse_status(LINE).expect("status line did not parse");
+        assert_eq!(h.state, "Streaming");
+        // regression: "buffered" is in cols[0], reading cols[1] silently gave 0
+        assert_eq!(h.buffered_ms, 37);
+        assert_eq!(h.rt, 1.00);
+        assert_eq!(h.fps, 375);
+        assert_eq!(h.bpf, 220);
+        assert_eq!(h.packets, 1250);
+        assert_eq!(h.frames, 3750);
+        assert_eq!(h.wire, 660);
+        assert_eq!(h.bitrate, 660);
+        assert_eq!(h.eqmid, 1);
+        assert_eq!(h.over, 4);
+        assert_eq!(h.under, 2);
+        assert_eq!(h.encerr, 0);
+        assert_eq!(h.senderr, 3);
+        assert_eq!(h.reconnects, 1);
+    }
+
+    #[test]
+    fn ignores_ordinary_log_lines() {
+        assert!(parse_status("radio up on 00:1A:7D:DA:71:15").is_none());
+        assert!(parse_status("[Streaming] buffered 37 ms").is_none());
+    }
 }

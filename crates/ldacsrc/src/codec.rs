@@ -7,6 +7,9 @@ pub const FREQ_88200: u8 = 1 << 3;
 pub const FREQ_96000: u8 = 1 << 2;
 
 pub const CHAN_MONO: u8 = 1 << 2;
+/// Completes the channel-mode bitmap; parsed from sinks and asserted in tests,
+/// but never offered - this source sends mono or stereo only.
+#[allow(dead_code)]
 pub const CHAN_DUAL: u8 = 1 << 1;
 pub const CHAN_STEREO: u8 = 1 << 0;
 

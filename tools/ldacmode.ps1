@@ -19,7 +19,11 @@ param(
     [ValidateSet('hq', 'sq', 'mq')]
     [string]$Quality = 'sq',
 
-    [string]$WinUsbInf = "$env:USERPROFILE\usb_driver\Generic_Bluetooth_Radio.inf"
+    [string]$WinUsbInf = "$env:USERPROFILE\usb_driver\Generic_Bluetooth_Radio.inf",
+
+    # ldacsrc passes its own PID when --auto-bt-fallback launches this on stream
+    # loss: it is still exiting, so the "already running" check would refuse.
+    [int]$WaitForPid = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -150,6 +154,16 @@ public static class LdacDriver {
 if ($Mode -eq 'status') {
     Show-Status
     return
+}
+
+if ($WaitForPid -gt 0) {
+    $deadline = (Get-Date).AddSeconds(15)
+    while ((Get-Process -Id $WaitForPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) {
+        Start-Sleep -Milliseconds 200
+    }
+    if (Get-Process -Id $WaitForPid -ErrorAction SilentlyContinue) {
+        throw "process $WaitForPid still running after 15s; not switching while it may own the radio"
+    }
 }
 
 $current = Get-RadioState

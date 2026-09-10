@@ -16,6 +16,31 @@ public static class Backend
     public static readonly string LdacSrcExe = FindLdacSrc();
     public static readonly string LdacModePs1 = Path.Combine(RepoRoot, "tools", "ldacmode.ps1");
 
+    // Resolve the images we launch rather than letting CreateProcess search
+    // PATH, so a stray reg.exe/pwsh.exe earlier on PATH cannot be picked up.
+    private static readonly string RegExe = Path.Combine(Environment.SystemDirectory, "reg.exe");
+    private static readonly string ControlExe = Path.Combine(Environment.SystemDirectory, "control.exe");
+    private static readonly string PwshExe = ResolveOnPath("pwsh.exe") ?? "pwsh";
+
+    private static string? ResolveOnPath(string exe)
+    {
+        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
+        {
+            if (string.IsNullOrWhiteSpace(dir)) continue;
+            try
+            {
+                var full = Path.Combine(dir.Trim(), exe);
+                if (File.Exists(full)) return full;
+            }
+            catch
+            {
+                // A malformed PATH entry (bad characters, too long) is not worth
+                // failing the lookup over; try the next one.
+            }
+        }
+        return null;
+    }
+
     private static string SettingsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "ldac-win", "settings.json");
@@ -52,7 +77,11 @@ public static class Backend
         {
             s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(SettingsPath));
         }
-        catch { }
+        catch
+        {
+            // No settings yet, or the file is corrupt: fall through to the egui
+            // migration below and then to defaults.
+        }
         if (s is null)
         {
             // migrate the egui panel's file if present
@@ -62,7 +91,11 @@ public static class Backend
                 if (File.Exists(egui))
                     s = JsonSerializer.Deserialize<Settings>(File.ReadAllText(egui));
             }
-            catch { }
+            catch
+            {
+                // Best-effort migration of the old egui panel's file; defaults
+                // are a fine outcome if it is missing or unreadable.
+            }
         }
         s ??= new Settings();
         // drop junk rows (blank addr) that render as empty cards
@@ -88,7 +121,11 @@ public static class Backend
             Directory.CreateDirectory(Path.GetDirectoryName(SettingsPath)!);
             File.WriteAllText(SettingsPath, JsonSerializer.Serialize(s, new JsonSerializerOptions { WriteIndented = true }));
         }
-        catch { }
+        catch
+        {
+            // Settings are a convenience; a read-only or full disk must not take
+            // down the UI action that triggered the save.
+        }
     }
 
     private static string? FmtAddr(string key)
@@ -119,7 +156,7 @@ public static class Backend
         try
         {
             using var p = new Process();
-            p.StartInfo = new ProcessStartInfo("reg", @"query HKLM\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices /s")
+            p.StartInfo = new ProcessStartInfo(RegExe, @"query HKLM\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices /s")
             {
                 RedirectStandardOutput = true,
                 UseShellExecute = false,
@@ -134,7 +171,8 @@ public static class Backend
                 var t = raw.Trim();
                 if (t.StartsWith("HKEY_", StringComparison.Ordinal))
                 {
-                    cur = FmtAddr(t.Split('\\').Last());
+                    var parts = t.Split('\\');
+                    cur = FmtAddr(parts[^1]);
                 }
                 else if (cur is not null)
                 {
@@ -149,7 +187,11 @@ public static class Backend
                 }
             }
         }
-        catch { }
+        catch
+        {
+            // reg.exe missing, access denied, or the key absent (the radio is in
+            // LDAC mode): an empty list is the correct answer either way.
+        }
         return devs;
     }
 
@@ -158,7 +200,7 @@ public static class Backend
         try
         {
             using var p = new Process();
-            p.StartInfo = new ProcessStartInfo("pwsh",
+            p.StartInfo = new ProcessStartInfo(PwshExe,
                 $"-NoProfile -ExecutionPolicy Bypass -File \"{LdacModePs1}\" {verb}")
             {
                 RedirectStandardOutput = true,
@@ -167,10 +209,15 @@ public static class Backend
                 CreateNoWindow = true,
             };
             p.Start();
-            var stdout = p.StandardOutput.ReadToEnd();
-            var stderr = p.StandardError.ReadToEnd();
-            p.WaitForExit(120000);
-            var raw = stdout + stderr;
+            // Drain both pipes concurrently: reading them in sequence deadlocks
+            // as soon as the child fills the one we are not currently draining.
+            var outTask = p.StandardOutput.ReadToEndAsync();
+            var errTask = p.StandardError.ReadToEndAsync();
+            if (!p.WaitForExit(120000))
+            {
+                try { p.Kill(entireProcessTree: true); } catch { /* already gone */ }
+            }
+            var raw = outTask.GetAwaiter().GetResult() + errTask.GetAwaiter().GetResult();
             var mode = raw.Split('\n')
                 .Select(l => l.Trim())
                 .FirstOrDefault(l => l.StartsWith("mode:"))?
@@ -214,8 +261,26 @@ public static class Backend
                     eps.Add((t, t));
             }
         }
-        catch { }
+        catch
+        {
+            // ldacsrc missing or unable to enumerate: the caller renders an empty
+            // capture list and the user types a name instead.
+        }
         return eps;
+    }
+
+    /// <summary>Opens Sound -> Playback so the mix format can be changed.</summary>
+    public static void OpenSoundControlPanel()
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(ControlExe, "mmsys.cpl,,0") { UseShellExecute = true });
+        }
+        catch
+        {
+            // A convenience shortcut; if the shell refuses there is nothing
+            // useful to tell the user.
+        }
     }
 
     /// <summary>Runs the switch on a worker thread; ldacmode.ps1 elevates itself via UAC.</summary>

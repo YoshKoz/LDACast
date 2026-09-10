@@ -1,0 +1,7 @@
+root = true
+
+# XAML wires event handlers as `this.Handler`, so a handler that happens not to
+# touch instance state still cannot be static: making it static fails the
+# generated code with CS0176. Verified against DevicesPage.g.cs.
+[*.xaml.cs]
+dotnet_diagnostic.S2325.severity = none

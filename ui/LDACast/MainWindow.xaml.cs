@@ -1,3 +1,4 @@
+using LDACast.Services;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -25,10 +26,7 @@ public sealed partial class MainWindow : Window
         Mark("after-navigate");
     }
 
-    private static void Mark(string s)
-    {
-        try { File.AppendAllText(Path.Combine(Path.GetTempPath(), "ldacwinui-startup.log"), $"{DateTime.Now:HH:mm:ss} {s}\n"); } catch { }
-    }
+    private static void Mark(string s) => StartupLog.Write(s);
 
     private void TitleBar_PaneToggleRequested(TitleBar sender, object args)
     {

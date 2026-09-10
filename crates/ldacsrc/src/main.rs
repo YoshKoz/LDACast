@@ -16,6 +16,11 @@ const RECONNECT_DELAY_MS: u32 = 3_000;
 /// Audio buffered before the first packet goes out.
 const PRIME_MS: u32 = 40;
 const RING_SECONDS: usize = 2;
+/// Payloads allowed to queue for the link before encoding backs off.
+const READY_MAX: usize = 32;
+/// A requested can-send slot that never arrives (endpoint gone) would wedge the
+/// stream forever, so re-ask after this long.
+const CAN_SEND_TIMEOUT_MS: u32 = 500;
 /// Class of Device: rendering / audio, audio-video major class.
 const COD_AUDIO_SOURCE: u32 = 0x0020_0408;
 const SPEAKER_COD_MASK: u32 = 0x0020_0000 | 0x0000_0400;
@@ -69,6 +74,11 @@ struct App {
     rtp_timestamp: u32,
     pending_samples: u32,
     awaiting_can_send: bool,
+    awaiting_since_ms: u32,
+    /// The sink can never carry this stream (no LDAC, no agreeable config, or
+    /// the encoder refused the negotiated one). Retrying cannot help, so the
+    /// reconnect loop stops instead of spinning on the same failure.
+    fatal: bool,
     primed: bool,
     audio_timer: bt::btstack_timer_source_t,
     stats_timer: bt::btstack_timer_source_t,
@@ -222,6 +232,8 @@ fn main() {
             rtp_timestamp: 0,
             pending_samples: 0,
             awaiting_can_send: false,
+            awaiting_since_ms: 0,
+            fatal: false,
             primed: false,
             audio_timer: std::mem::zeroed(),
             stats_timer: std::mem::zeroed(),
@@ -253,6 +265,9 @@ fn main() {
     }
 
     drop(cap);
+    if app().fatal {
+        std::process::exit(5);
+    }
 }
 
 unsafe fn setup_btstack() { unsafe {
@@ -447,6 +462,13 @@ unsafe fn establish_audio() { unsafe {
 
 unsafe fn schedule_reconnect() { unsafe {
     let a = app();
+    if a.fatal {
+        stop_streaming();
+        a.state = State::Idle;
+        println!("this sink cannot carry LDAC from this capture format - giving up");
+        bt::btstack_run_loop_trigger_exit();
+        return;
+    }
     if a.target.is_none() {
         a.state = State::Idle;
         return;
@@ -520,6 +542,7 @@ unsafe extern "C" fn a2dp_handler(packet_type: u8, _channel: u16, packet: *mut u
                 (Some(c), Some(s)) => (c, s),
                 _ => {
                     println!("sink does not advertise LDAC - refusing to fall back silently");
+                    a.fatal = true;
                     bt::a2dp_source_disconnect(a.a2dp_cid);
                     a.state = State::Idle;
                     return;
@@ -529,6 +552,7 @@ unsafe extern "C" fn a2dp_handler(packet_type: u8, _channel: u16, packet: *mut u
                 Ok(c) => c,
                 Err(e) => {
                     println!("cannot agree an LDAC configuration: {e}");
+                    a.fatal = true;
                     bt::a2dp_source_disconnect(a.a2dp_cid);
                     a.state = State::Idle;
                     return;
@@ -597,7 +621,14 @@ unsafe extern "C" fn a2dp_handler(packet_type: u8, _channel: u16, packet: *mut u
 
 unsafe fn start_streaming() { unsafe {
     let a = app();
+    // BTstack reports 0 here when the endpoint or the media channel has already
+    // gone away; that is a lost race, not a broken sink, so retry.
     let max_payload = bt::a2dp_max_media_payload_size(a.a2dp_cid, a.local_seid) as usize;
+    if max_payload <= 1 {
+        println!("no media channel for seid {} - reconnecting", a.local_seid);
+        schedule_reconnect();
+        return;
+    }
     // ldacBT sizes its frames from the MTU it is given
     let enc = match Encoder::new(
         max_payload as i32,
@@ -608,6 +639,7 @@ unsafe fn start_streaming() { unsafe {
         Ok(e) => e,
         Err(code) => {
             println!("LDAC encoder init failed, ldac error {code}");
+            a.fatal = true;
             bt::a2dp_source_disconnect(a.a2dp_cid);
             return;
         }
@@ -624,6 +656,7 @@ unsafe fn start_streaming() { unsafe {
     a.rtp_timestamp = 0;
     a.pending_samples = 0;
     a.awaiting_can_send = false;
+    a.awaiting_since_ms = 0;
     a.primed = false;
     a.state = State::Streaming;
     a.streamed_once = true;
@@ -642,6 +675,13 @@ unsafe fn stop_streaming() { unsafe {
     a.packer = None;
     a.ready.clear();
     a.awaiting_can_send = false;
+    a.awaiting_since_ms = 0;
+}}
+
+unsafe fn request_can_send(a: &mut App) { unsafe {
+    a.awaiting_can_send = true;
+    a.awaiting_since_ms = bt::btstack_run_loop_get_time_ms() as u32;
+    bt::a2dp_source_stream_endpoint_request_can_send_now(a.a2dp_cid, a.local_seid);
 }}
 
 unsafe extern "C" fn audio_timer_handler(_t: *mut bt::btstack_timer_source_t) { unsafe {
@@ -667,7 +707,7 @@ unsafe extern "C" fn audio_timer_handler(_t: *mut bt::btstack_timer_source_t) { 
         / encoder::FRAME_SAMPLES;
     let mut budget = (per_tick * 4).max(1);
 
-    while a.audio.len() >= a.pcm.len() && budget > 0 && a.ready.len() < 32 {
+    while a.audio.len() >= a.pcm.len() && budget > 0 && a.ready.len() < READY_MAX {
         budget -= 1;
         a.audio.pop_padded(&mut a.pcm);
         let (out, payload) = match a.enc.as_mut().unwrap().encode(&a.pcm) {
@@ -689,8 +729,13 @@ unsafe extern "C" fn audio_timer_handler(_t: *mut bt::btstack_timer_source_t) { 
                 let samples = std::mem::take(&mut a.pending_samples);
                 a.ready.push_back((done, samples));
             }
-            // the frame that did not fit opens the next packet
-            assert_eq!(a.packer.as_mut().unwrap().push_batch(payload, out.frames), Push::Buffered);
+            // The batch that did not fit opens the next packet. One that will
+            // not fit an empty packet either can never be sent, so drop it:
+            // panicking here would abort the process from a BTstack callback.
+            if a.packer.as_mut().unwrap().push_batch(payload, out.frames) == Push::Full {
+                a.stats.send_errors += 1;
+                continue;
+            }
         }
         // A transport frame represents 128 samples at 44.1/48 kHz and 256
         // at 88.2/96 kHz, independent of how many encode calls buffered it.
@@ -703,44 +748,64 @@ unsafe extern "C" fn audio_timer_handler(_t: *mut bt::btstack_timer_source_t) { 
     }
 
     // Sending is paced by the link, not by this timer: ask for a slot as soon
-    // as anything is queued and keep asking from the send handler.
-    if !a.awaiting_can_send && !a.ready.is_empty() {
-        a.awaiting_can_send = true;
-        bt::a2dp_source_stream_endpoint_request_can_send_now(a.a2dp_cid, a.local_seid);
+    // as anything is queued and keep asking from the send handler. A slot that
+    // never arrives would otherwise leave awaiting_can_send set forever and
+    // wedge the stream, so re-ask once the request has gone stale.
+    if !a.ready.is_empty() {
+        let stalled = a.awaiting_can_send
+            && (bt::btstack_run_loop_get_time_ms() as u32).wrapping_sub(a.awaiting_since_ms)
+                > CAN_SEND_TIMEOUT_MS;
+        if !a.awaiting_can_send || stalled {
+            request_can_send(a);
+        }
     }
 }}
 
 unsafe fn send_packet() { unsafe {
     let a = app();
-    let (payload, samples) = match a.ready.pop_front() {
-        Some(v) => v,
-        None => {
-            a.awaiting_can_send = false;
-            return;
-        }
-    };
+    // BTstack returns 0 - which is ERROR_CODE_SUCCESS - when the endpoint or
+    // the media channel has gone (avdtp_source.c), so a teardown window would
+    // otherwise be counted as a successful send. Only send while streaming.
+    if a.state != State::Streaming || a.ready.is_empty() {
+        a.awaiting_can_send = false;
+        return;
+    }
+
+    let (payload, samples) = a.ready.front().expect("ready is not empty");
     let frames = payload[0] as u64;
+    let bytes = payload.len();
+    let samples = *samples;
     let status = bt::a2dp_source_stream_send_media_payload_rtp(
         a.a2dp_cid,
         a.local_seid,
         0,
         a.rtp_timestamp,
         payload.as_ptr() as *mut u8,
-        payload.len() as u16,
+        bytes as u16,
     );
-    if status as u32 != bt::ERROR_CODE_SUCCESS {
-        a.stats.send_errors += 1;
-    } else {
+
+    if status as u32 == bt::ERROR_CODE_SUCCESS {
+        a.ready.pop_front();
         a.rtp_timestamp = a.rtp_timestamp.wrapping_add(samples);
         a.stats.packets += 1;
         a.stats.frames += frames;
-        a.stats.payload_bytes += payload.len() as u64;
+        a.stats.payload_bytes += bytes as u64;
+    } else {
+        // The slot went away between the event and here: the signalling channel
+        // shares the controller's ACL buffers, and each media packet takes three
+        // of the ten this radio has. Keep the payload queued and retry rather
+        // than dropping audio; only give up on the oldest once the queue is at
+        // its cap, so latency stays bounded.
+        a.stats.send_errors += 1;
+        if a.ready.len() >= READY_MAX {
+            a.ready.pop_front();
+        }
     }
 
     if a.ready.is_empty() {
         a.awaiting_can_send = false;
     } else {
-        bt::a2dp_source_stream_endpoint_request_can_send_now(a.a2dp_cid, a.local_seid);
+        request_can_send(a);
     }
 }}
 
@@ -820,7 +885,7 @@ unsafe extern "C" fn stats_timer_handler(_t: *mut bt::btstack_timer_source_t) { 
 /// the switch continues detached while we exit (exit code 4 = fallback).
 /// Returns false when the switch script is missing, in which case the
 /// caller keeps retrying instead of exiting.
-unsafe fn auto_bt_fallback() -> bool { unsafe {
+unsafe fn auto_bt_fallback() -> bool {
     println!("stream lost, handing radio back to Windows");
     let script = std::env::current_exe()
         .ok()
@@ -829,10 +894,14 @@ unsafe fn auto_bt_fallback() -> bool { unsafe {
         });
     match script {
         Some(path) => {
+            // The script refuses to switch while ldacsrc owns the radio, and we
+            // are still alive at this point, so hand it our PID to wait on.
             let _ = std::process::Command::new("pwsh")
                 .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
                 .arg(&path)
                 .arg("bt")
+                .arg("-WaitForPid")
+                .arg(std::process::id().to_string())
                 .spawn();
             println!("Windows-mode switch launched, exiting");
             std::process::exit(4);
@@ -842,6 +911,6 @@ unsafe fn auto_bt_fallback() -> bool { unsafe {
             false
         }
     }
-}}
+}
 
 
