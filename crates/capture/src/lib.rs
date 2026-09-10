@@ -158,7 +158,15 @@ fn capture_thread(
 
         let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
         let device: IMMDevice = match endpoint_id {
-            Some(id) => enumerator.GetDevice(&HSTRING::from(id))?,
+            Some(id) => {
+                // Registry key names carry the bare GUID; endpoint IDs take
+                // the "{0.0.0.00000000}." device-interface prefix.
+                enumerator
+                    .GetDevice(&HSTRING::from(id.clone()))
+                    .or_else(|_| {
+                        enumerator.GetDevice(&HSTRING::from(format!("{{0.0.0.00000000}}.{id}")))
+                    })?
+            }
             None => enumerator.GetDefaultAudioEndpoint(eRender, eConsole)?,
         };
         let client: IAudioClient = device.Activate(CLSCTX_ALL, None)?;
