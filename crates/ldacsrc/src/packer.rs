@@ -18,14 +18,26 @@ pub enum Push {
 
 impl Packer {
     pub fn new(max_payload: usize) -> Packer {
-        assert!(max_payload > 1, "max payload must leave room for the header");
-        Packer { max_payload, buf: vec![0u8], frames: 0 }
+        assert!(
+            max_payload > 1,
+            "max payload must leave room for the header"
+        );
+        Packer {
+            max_payload,
+            buf: vec![0u8],
+            frames: 0,
+        }
     }
 
     pub fn push_batch(&mut self, frame: &[u8], frames: usize) -> Push {
         assert!(frames > 0 && frames <= MAX_FRAMES_PER_PACKET);
-        assert!(frame.len() < self.max_payload, "LDAC batch exceeds media MTU");
-        if self.frames + frames > MAX_FRAMES_PER_PACKET || self.buf.len() + frame.len() > self.max_payload {
+        assert!(
+            frame.len() < self.max_payload,
+            "LDAC batch exceeds media MTU"
+        );
+        if self.frames + frames > MAX_FRAMES_PER_PACKET
+            || self.buf.len() + frame.len() > self.max_payload
+        {
             return Push::Full;
         }
         self.buf.extend_from_slice(frame);

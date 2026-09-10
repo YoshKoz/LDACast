@@ -14,3 +14,7 @@ btstack_*.tlv
 .vscode/
 Desktop.ini
 Thumbs.db
+
+# Windows reserved device name captured by a stray `> NUL` redirect under bash;
+# git can never index it ("short read while indexing NUL") but it breaks add -A.
+NUL

@@ -24,7 +24,16 @@ pub struct LdacCaps {
 pub fn media_codec_info(caps: LdacCaps) -> [u8; 8] {
     let v = SONY_VENDOR_ID.to_le_bytes();
     let c = LDAC_CODEC_ID.to_le_bytes();
-    [v[0], v[1], v[2], v[3], c[0], c[1], caps.sampling_freqs, caps.channel_modes]
+    [
+        v[0],
+        v[1],
+        v[2],
+        v[3],
+        c[0],
+        c[1],
+        caps.sampling_freqs,
+        caps.channel_modes,
+    ]
 }
 
 pub fn parse_media_codec_info(info: &[u8]) -> Option<LdacCaps> {
@@ -36,7 +45,10 @@ pub fn parse_media_codec_info(info: &[u8]) -> Option<LdacCaps> {
     if vendor != SONY_VENDOR_ID || codec != LDAC_CODEC_ID {
         return None;
     }
-    Some(LdacCaps { sampling_freqs: info[6], channel_modes: info[7] })
+    Some(LdacCaps {
+        sampling_freqs: info[6],
+        channel_modes: info[7],
+    })
 }
 
 pub fn freq_bit(rate: u32) -> Option<u8> {
@@ -70,7 +82,10 @@ pub fn choose_config(sink: LdacCaps, rate: u32, channels: u16) -> Result<LdacCap
             sink.channel_modes
         ));
     }
-    Ok(LdacCaps { sampling_freqs: freq, channel_modes: chan })
+    Ok(LdacCaps {
+        sampling_freqs: freq,
+        channel_modes: chan,
+    })
 }
 
 #[cfg(test)]
@@ -84,7 +99,10 @@ mod tests {
     #[test]
     fn parses_real_sink_capability() {
         let caps = parse_media_codec_info(&XM3_INFO).unwrap();
-        assert_eq!(caps.sampling_freqs, FREQ_44100 | FREQ_48000 | FREQ_88200 | FREQ_96000);
+        assert_eq!(
+            caps.sampling_freqs,
+            FREQ_44100 | FREQ_48000 | FREQ_88200 | FREQ_96000
+        );
         assert_eq!(caps.channel_modes, CHAN_MONO | CHAN_DUAL | CHAN_STEREO);
     }
 
@@ -111,7 +129,10 @@ mod tests {
 
     #[test]
     fn rejects_rate_the_sink_did_not_offer() {
-        let sink = LdacCaps { sampling_freqs: FREQ_44100, channel_modes: CHAN_STEREO };
+        let sink = LdacCaps {
+            sampling_freqs: FREQ_44100,
+            channel_modes: CHAN_STEREO,
+        };
         assert!(choose_config(sink, 96000, 2).is_err());
     }
 

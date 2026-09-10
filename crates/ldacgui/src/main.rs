@@ -58,7 +58,9 @@ fn fmt_addr(key: &str) -> Option<String> {
     if key.len() != 12 || !key.chars().all(|c| c.is_ascii_hexdigit()) {
         return None;
     }
-    let b: Vec<String> = (0..6).map(|i| key[2 * i..2 * i + 2].to_uppercase()).collect();
+    let b: Vec<String> = (0..6)
+        .map(|i| key[2 * i..2 * i + 2].to_uppercase())
+        .collect();
     Some(b.join(":"))
 }
 
@@ -68,10 +70,14 @@ fn decode_name(kind: &str, hex: &str) -> String {
         .filter_map(|i| u8::from_str_radix(&hex[i..i + 2.min(hex.len() - i)], 16).ok())
         .collect();
     if kind == "REG_SZ" || kind == "REG_EXPAND_SZ" {
-        String::from_utf8_lossy(&bytes).trim_matches('\0').to_string()
+        String::from_utf8_lossy(&bytes)
+            .trim_matches('\0')
+            .to_string()
     } else {
         let u16s: Vec<u16> = bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|c| u16::from_le_bytes([c[0], c[1]]))
             .collect();
         String::from_utf16_lossy(&u16s)
@@ -119,7 +125,10 @@ fn win_paired_devices() -> Vec<(String, String)> {
 
 fn repo_paths() -> (PathBuf, PathBuf) {
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("."));
-    let dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or(PathBuf::from("."));
+    let dir = exe
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or(PathBuf::from("."));
     // release layout: <repo>/target/release/*.exe and <repo>/tools/ldacmode.ps1
     let script = dir
         .ancestors()
@@ -169,7 +178,7 @@ struct Health {
 }
 
 fn num_after(s: &str, key: &str) -> u64 {
-    s.split(key).nth(1).map(|r| num_head(r)).unwrap_or(0)
+    s.split(key).nth(1).map(num_head).unwrap_or(0)
 }
 
 fn num_head(s: &str) -> u64 {
@@ -307,22 +316,22 @@ impl App {
         };
         for m in msgs {
             match m {
-                    GuiMsg::Line(l) => {
-                        if let Some(h) = parse_status(&l) {
-                            if h.over > self.last_over && self.last_over > 0 {
-                                self.hint = "overruns rising: link can't hold this bitrate — drop to mq (stutter fix)".into();
-                            }
-                            self.last_over = h.over;
-                            self.health = Some(h);
-                        } else if !l.trim().is_empty() {
-                            self.log(l);
+                GuiMsg::Line(l) => {
+                    if let Some(h) = parse_status(&l) {
+                        if h.over > self.last_over && self.last_over > 0 {
+                            self.hint = "overruns rising: link can't hold this bitrate — drop to mq (stutter fix)".into();
                         }
+                        self.last_over = h.over;
+                        self.health = Some(h);
+                    } else if !l.trim().is_empty() {
+                        self.log(l);
                     }
-                    GuiMsg::Exited => {
-                        self.running = false;
-                        self.child = None;
-                        self.log("ldacsrc exited".into());
-                    }
+                }
+                GuiMsg::Exited => {
+                    self.running = false;
+                    self.child = None;
+                    self.log("ldacsrc exited".into());
+                }
                 GuiMsg::RadioDone(mode, raw) => {
                     self.radio_mode = mode;
                     self.radio_raw = raw;
@@ -381,7 +390,9 @@ impl App {
         if self.running {
             return;
         }
-        let Some(dev) = self.settings.devices.get(self.settings.selected).cloned() else { return };
+        let Some(dev) = self.settings.devices.get(self.settings.selected).cloned() else {
+            return;
+        };
         let bin = self.exe_dir.join("ldacsrc.exe");
         if !bin.exists() {
             self.log(format!("build missing: {}", bin.display()));
@@ -452,64 +463,82 @@ impl eframe::App for App {
     fn ui(&mut self, root: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.pump();
 
-        egui::Panel::left("devices").resizable(true).show(root, |ui| {
-            ui.heading("Devices");
-            ui.separator();
-            let mut sel = self.settings.selected;
-            for (i, d) in self.settings.devices.iter().enumerate() {
-                if ui.selectable_label(sel == i, format!("{}  {}", d.name, d.addr)).clicked() {
-                    sel = i;
-                }
-            }
-            if sel != self.settings.selected {
-                self.settings.selected = sel;
-                self.persist();
-            }
-            ui.separator();
-            ui.label("Add device:");
-            ui.text_edit_singleline(&mut self.new_name);
-            ui.text_edit_singleline(&mut self.new_addr);
-            ui.horizontal(|ui| {
-                if ui.button("Add").clicked() && !self.new_addr.is_empty() {
-                    let name = if self.new_name.is_empty() { self.new_addr.clone() } else { self.new_name.clone() };
-                    self.settings.devices.push(DeviceEntry {
-                        name,
-                        addr: self.new_addr.trim().to_uppercase(),
-                        quality: "sq".into(),
-                        abr: false,
-                    });
-                    self.new_name.clear();
-                    self.new_addr.clear();
-                    self.persist();
-                }
-                if ui.button("Remove").clicked() && self.settings.devices.len() > 1 {
-                    self.settings.devices.remove(self.settings.selected);
-                    self.settings.selected = 0;
-                    self.persist();
-                }
-            });
-            ui.separator();
-            ui.label("Windows-paired (read-only):");
-            egui::ScrollArea::vertical().max_height(140.0).show(ui, |ui| {
-                let mut known: BTreeMap<String, String> = BTreeMap::new();
-                for d in &self.settings.devices {
-                    known.insert(d.addr.clone(), d.name.clone());
-                }
-                for (addr, name) in &self.win_devs {
-                    let mark = if known.contains_key(addr) { "[in list]" } else { "[new]" };
-                    if ui.selectable_label(false, format!("{mark} {name}  {addr}")).clicked() {
-                        self.new_name = name.clone();
-                        self.new_addr = addr.clone();
+        egui::Panel::left("devices")
+            .resizable(true)
+            .show(root, |ui| {
+                ui.heading("Devices");
+                ui.separator();
+                let mut sel = self.settings.selected;
+                for (i, d) in self.settings.devices.iter().enumerate() {
+                    if ui
+                        .selectable_label(sel == i, format!("{}  {}", d.name, d.addr))
+                        .clicked()
+                    {
+                        sel = i;
                     }
                 }
-                if self.win_devs.is_empty() {
-                    ui.weak("none visible (radio may be in LDAC mode)");
+                if sel != self.settings.selected {
+                    self.settings.selected = sel;
+                    self.persist();
+                }
+                ui.separator();
+                ui.label("Add device:");
+                ui.text_edit_singleline(&mut self.new_name);
+                ui.text_edit_singleline(&mut self.new_addr);
+                ui.horizontal(|ui| {
+                    if ui.button("Add").clicked() && !self.new_addr.is_empty() {
+                        let name = if self.new_name.is_empty() {
+                            self.new_addr.clone()
+                        } else {
+                            self.new_name.clone()
+                        };
+                        self.settings.devices.push(DeviceEntry {
+                            name,
+                            addr: self.new_addr.trim().to_uppercase(),
+                            quality: "sq".into(),
+                            abr: false,
+                        });
+                        self.new_name.clear();
+                        self.new_addr.clear();
+                        self.persist();
+                    }
+                    if ui.button("Remove").clicked() && self.settings.devices.len() > 1 {
+                        self.settings.devices.remove(self.settings.selected);
+                        self.settings.selected = 0;
+                        self.persist();
+                    }
+                });
+                ui.separator();
+                ui.label("Windows-paired (read-only):");
+                egui::ScrollArea::vertical()
+                    .max_height(140.0)
+                    .show(ui, |ui| {
+                        let mut known: BTreeMap<String, String> = BTreeMap::new();
+                        for d in &self.settings.devices {
+                            known.insert(d.addr.clone(), d.name.clone());
+                        }
+                        for (addr, name) in &self.win_devs {
+                            let mark = if known.contains_key(addr) {
+                                "[in list]"
+                            } else {
+                                "[new]"
+                            };
+                            if ui
+                                .selectable_label(false, format!("{mark} {name}  {addr}"))
+                                .clicked()
+                            {
+                                self.new_name = name.clone();
+                                self.new_addr = addr.clone();
+                            }
+                        }
+                        if self.win_devs.is_empty() {
+                            ui.weak("none visible (radio may be in LDAC mode)");
+                        }
+                    });
+                if ui.button("Refresh paired").clicked() {
+                    self.win_devs = win_paired_devices();
                 }
             });
-            if ui.button("Refresh paired").clicked() {
-                self.win_devs = win_paired_devices();
-            }
-        });
 
         egui::CentralPanel::default().show(root, |ui| {
             ui.heading("LDACast");

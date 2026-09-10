@@ -1,8 +1,8 @@
 # LDACast
 
-LDAC for Windows, at last. A user-mode LDAC A2DP source for Windows 10/11:
-stream system audio to Sony (and other LDAC-capable) Bluetooth headphones in
-LDAC quality, with a Fluent desktop app in the style of DLSS Swapper.
+A user-mode LDAC A2DP source for Windows 10/11: stream system audio to Sony
+(and other LDAC-capable) Bluetooth headphones in LDAC quality, with a Fluent
+desktop app in the style of DLSS Swapper.
 
 Windows ships no LDAC codec for A2DP and does not expose L2CAP to user mode,
 so this program takes a generic CSR8510-class USB Bluetooth dongle for itself
@@ -26,38 +26,46 @@ encoding the WASAPI loopback mix with Sony's libldac.
 - **Dedicated capture source** (`--capture NAME`, `--list-capture`): capture
   a virtual cable (e.g. VB-CABLE) instead of the default device, so music
   routes silently to the headphones instead of blaring from the speakers.
+  `--check-capture` reports a device's mix format and exits without touching
+  the radio, and `--help` lists every flag.
 - **Automatic pairing**: first connect bonds over SSP Just Works; link keys
   persist per radio, reconnects are silent after that.
-- **Measured, not claimed**: every architectural decision was verified
-  against packet traces on real hardware — see [ARCHITECTURE.md](ARCHITECTURE.md).
+- **Measured, not assumed**: the design decisions were checked against packet
+  traces from this radio — see [ARCHITECTURE.md](ARCHITECTURE.md). What has
+  _not_ been verified is listed in [LIMITATIONS.md](LIMITATIONS.md).
 
 ## Quick start
 
 Prerequisites: Rust (1.98+, `x86_64-pc-windows-msvc`), Visual Studio 2022
-with the C++ workload, LLVM (`$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'`),
-.NET 8 SDK (for the app), [Zadig](https://zadig.akeo.ie) (once, to bind the
-dongle to WinUSB), and a CSR8510-class Bluetooth dongle (e.g. TP-Link UB400).
+with the C++ workload, LLVM, .NET 8 SDK (for the app),
+[Zadig](https://zadig.akeo.ie) (once, to bind the dongle to WinUSB), and a
+CSR8510-class Bluetooth dongle (e.g. TP-Link UB400).
+
+`crates/ldac-sys` and `crates/btstack-sys` run bindgen, which needs libclang.
+It is normally picked up from `PATH`; only if the build cannot find it, set
+`$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'` first.
 
 ```powershell
 git clone --recursive https://github.com/YoshKoz/LDACast.git
 cd LDACast
-$env:LIBCLANG_PATH = 'C:\Program Files\LLVM\bin'
 cargo build --release
 cargo test --workspace
 ```
 
-Give the dongle to the app (one-time Zadig step in [README](#give-the-dongle-to-this-program)
-detail below), then either click **Stream** in the desktop app or run:
+Give the dongle to the app (one-time Zadig step
+[below](#give-the-dongle-to-this-program)), then either click **Stream** in the
+desktop app or run:
 
 ```powershell
 .\target\release\ldacsrc.exe --addr 14:3F:A6:35:D0:AA --quality sq
 ```
 
 The sink must be in pairing mode the first time; link keys are stored next
-to the working directory. Every HCI packet and log line goes to
-`ldacsrc.pklg` (readable with `python third_party\btstack\tool\dump_pklg.py`).
-A status line every 5 seconds reports buffer depth, packet/frame counts,
-measured wire rate, encoder bitrate/EQMID, ring over/underruns and errors.
+to the working directory. Every HCI packet goes to `ldacsrc.pklg` (readable
+with `python third_party\btstack\tool\dump_pklg.py`); the program's own log
+lines go to stdout. A status line every 5 seconds reports buffer depth,
+packet/frame counts, measured wire rate, encoder bitrate/EQMID, ring
+over/underruns and errors.
 
 ## Switching the radio between Windows and LDACast
 
@@ -99,7 +107,7 @@ LDAC carries 44.1, 48, 88.2 or 96 kHz, mono or stereo. WASAPI loopback
 delivers the shared mix format of the captured playback device, and there is
 no resampler in this program — if the device runs at any other rate the
 program refuses to start and says so. Set the device to stereo at one of
-those rates in Sound -> *device* -> Properties -> Advanced -> Default Format.
+those rates in Sound -> _device_ -> Properties -> Advanced -> Default Format.
 
 Tip: install [VB-CABLE](https://vb-audio.com/Cable/) (free), set `CABLE
 Input` as the default playback device, and pass `--capture CABLE` (or type
@@ -108,16 +116,24 @@ headphones; `--list-capture` shows the exact endpoint names.
 
 ## Choosing a quality
 
-- `hq` — maximum LDAC quality (909/990 kbps). Needs a strong link: roughly
-  190 small packets/s sustained.
+- `hq` — maximum LDAC quality (909 kbps at 44.1 kHz, 990 at 48 kHz).
 - `sq` — the balanced default (606/660 kbps).
-- `mq` — most robust (303/330 kbps); needs about 47 packets/s.
+- `mq` — most robust (303/330 kbps).
 
-Measured on a TP-Link UB400 (CSR8510, Bluetooth 4.0): the link bursts fine
-but stalls for tens of seconds, which SQ cannot survive and MQ holds at
-`rt 1.00x` indefinitely. If you hear dropouts or the app flags rising
-overruns, drop one rung — exactly like tuning an Alternative A2DP Driver
-bitpool. `--abr` lets the encoder walk EQMID from buffer depth instead.
+The ceiling is the radio link, not the software. A2DP retransmits damaged
+packets, so a link that cannot keep up shows up as gaps in the audio; the
+status line's `rt` ratio and its overrun counter are what to watch.
+
+Measured here — CSR8510 (TP-Link UB400 class) to a WH-1000XM3, 48 kHz stereo,
+`hq`: `rt 1.00x` sustained at 375 frame/s and 330 B/frame, wire 988-996 kbps
+against a 990 kbps target, `over 0 under 0 encerr 0 senderr 0`, no dropouts,
+over a short indoor link. That is the only configuration that has been
+listened to; the other rates and modes are implemented but unverified, as
+[LIMITATIONS.md](LIMITATIONS.md) records.
+
+If you do hear dropouts, drop one rung — the desktop app's Guide page walks
+through the same checklist. `--abr` lets the encoder walk EQMID from buffer
+depth instead, but it is off by default and unproven.
 
 ## Give the dongle back to Windows
 
@@ -129,17 +145,17 @@ paired through LDACast may need re-pairing in Windows, and vice versa.
 
 ## Layout
 
-| Path | What |
-| --- | --- |
-| `crates/ldacsrc` | A2DP/AVDTP logic, encode, packetise, reconnect |
-| `crates/capture` | WASAPI loopback thread, endpoint selection, SPSC ring |
-| `crates/ldac-sys` | libldac built from source, bindgen FFI |
-| `crates/btstack-sys` | BTstack built from source, bindgen FFI |
-| `crates/ldacgui` | Minimal egui control panel (same engine) |
-| `ui/LDACast` | WinUI 3 desktop app (devices, stream health, settings) |
-| `tools/ldacmode.ps1` | Radio ownership switch Windows <-> LDAC |
-| `third_party/btstack` | BTstack submodule (pinned) |
-| `third_party/ldacBT` | libldac snapshot (Apache 2.0) |
+| Path                  | What                                                   |
+| --------------------- | ------------------------------------------------------ |
+| `crates/ldacsrc`      | A2DP/AVDTP logic, encode, packetise, reconnect         |
+| `crates/capture`      | WASAPI loopback thread, endpoint selection, SPSC ring  |
+| `crates/ldac-sys`     | libldac built from source, bindgen FFI                 |
+| `crates/btstack-sys`  | BTstack built from source, bindgen FFI                 |
+| `crates/ldacgui`      | Minimal egui control panel (same engine)               |
+| `ui/LDACast`          | WinUI 3 desktop app (devices, stream health, settings) |
+| `tools/ldacmode.ps1`  | Radio ownership switch Windows <-> LDAC                |
+| `third_party/btstack` | BTstack submodule (pinned)                             |
+| `third_party/ldacBT`  | libldac snapshot (Apache 2.0)                          |
 
 ## Limitations
 

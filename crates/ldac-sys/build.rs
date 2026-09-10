@@ -3,7 +3,12 @@ use std::path::PathBuf;
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     // canonicalize() yields a \\?\ prefixed path that cl.exe rejects
-    let root = manifest.parent().unwrap().parent().unwrap().join("third_party/ldacBT");
+    let root = manifest
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("third_party/ldacBT");
     let inc = root.join("libldac/inc");
     let abr_inc = root.join("libldac/abr/inc");
     let compat = root.join("compat");

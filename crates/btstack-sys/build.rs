@@ -16,7 +16,12 @@ fn glob_c(dir: &Path, out: &mut Vec<PathBuf>) {
 fn main() {
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
     // canonicalize() yields a \\?\ prefixed path that cl.exe rejects
-    let root = manifest.parent().unwrap().parent().unwrap().join("third_party/btstack");
+    let root = manifest
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("third_party/btstack");
     let port = root.join("port/windows-winusb");
 
     let includes = [

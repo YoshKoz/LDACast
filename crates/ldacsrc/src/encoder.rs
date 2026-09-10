@@ -4,9 +4,9 @@ use ldac_sys as sys;
 pub const FRAME_SAMPLES: usize = sys::LDACBT_ENC_LSU as usize;
 pub const MAX_FRAME_BYTES: usize = sys::LDACBT_MAX_NBYTES as usize;
 
-pub const EQMID_HQ: i32 = sys::LDACBT_EQMID_HQ as i32;
-pub const EQMID_SQ: i32 = sys::LDACBT_EQMID_SQ as i32;
-pub const EQMID_MQ: i32 = sys::LDACBT_EQMID_MQ as i32;
+pub const EQMID_HQ: i32 = sys::LDACBT_EQMID_HQ;
+pub const EQMID_SQ: i32 = sys::LDACBT_EQMID_SQ;
+pub const EQMID_MQ: i32 = sys::LDACBT_EQMID_MQ;
 
 pub struct Encoder {
     handle: sys::HANDLE_LDAC_BT,
@@ -139,7 +139,9 @@ mod tests {
                 for _ in 0..32 {
                     let (out, payload) = enc.encode(&pcm).unwrap();
                     assert_eq!(out.pcm_used, pcm.len() * size_of::<f32>());
-                    if out.frames == 0 { continue; }
+                    if out.frames == 0 {
+                        continue;
+                    }
                     assert_eq!(packer.push_batch(payload, out.frames), Push::Buffered);
                     let packet = packer.flush().unwrap();
                     assert_eq!(packet[0] as usize, out.frames);

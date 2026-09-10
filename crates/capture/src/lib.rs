@@ -1,22 +1,21 @@
 pub mod ring;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
-use windows::core::{Result, HSTRING};
 use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
 use windows::Win32::Media::Audio::{
-    eConsole, eRender, IAudioCaptureClient, IAudioClient, IMMDevice, IMMDeviceEnumerator,
-    MMDeviceEnumerator, AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED,
-    AUDCLNT_STREAMFLAGS_EVENTCALLBACK, AUDCLNT_STREAMFLAGS_LOOPBACK, WAVEFORMATEX,
-    WAVEFORMATEXTENSIBLE,
+    AUDCLNT_BUFFERFLAGS_SILENT, AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_EVENTCALLBACK,
+    AUDCLNT_STREAMFLAGS_LOOPBACK, IAudioCaptureClient, IAudioClient, IMMDevice,
+    IMMDeviceEnumerator, MMDeviceEnumerator, WAVEFORMATEX, WAVEFORMATEXTENSIBLE, eConsole, eRender,
 };
 use windows::Win32::System::Com::{
-    CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL,
-    COINIT_MULTITHREADED,
+    CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx, CoTaskMemFree,
+    CoUninitialize,
 };
 use windows::Win32::System::Threading::{CreateEventW, WaitForSingleObject};
+use windows::core::{HSTRING, Result};
 
 pub const WAVE_FORMAT_IEEE_FLOAT: u16 = 0x0003;
 pub const WAVE_FORMAT_EXTENSIBLE: u16 = 0xFFFE;
@@ -47,13 +46,19 @@ impl Capture {
     /// the available endpoints when nothing matches.
     pub fn start_on(sink: ring::Producer, query: &str) -> Result<Capture> {
         let id = find_endpoint(query).ok_or_else(|| {
-            let mut names: Vec<String> = list_render_endpoints().into_iter().map(|(_, n)| n).collect();
+            let mut names: Vec<String> = list_render_endpoints()
+                .into_iter()
+                .map(|(_, n)| n)
+                .collect();
             if names.is_empty() {
                 names.push("(no render endpoints found)".into());
             }
             windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("no render endpoint matches {query:?}; available: {}", names.join(", ")),
+                format!(
+                    "no render endpoint matches {query:?}; available: {}",
+                    names.join(", ")
+                ),
             )
         })?;
         Self::start_inner(sink, Some(id))
@@ -75,7 +80,11 @@ impl Capture {
             .expect("spawn capture thread");
 
         match rx.recv() {
-            Ok(Ok(format)) => Ok(Capture { stop, thread: Some(thread), format }),
+            Ok(Ok(format)) => Ok(Capture {
+                stop,
+                thread: Some(thread),
+                format,
+            }),
             Ok(Err(e)) => Err(e),
             Err(_) => Err(windows::core::Error::from_win32()),
         }
@@ -108,20 +117,27 @@ fn describe_format(wf: *const WAVEFORMATEX) -> Result<Format> {
             format!("unsupported mix format: tag {tag:#x}, {bits} bit, {channels} ch, {rate} Hz"),
         ));
     }
-    Ok(Format { sample_rate: rate, channels })
+    Ok(Format {
+        sample_rate: rate,
+        channels,
+    })
 }
 
 /// Active render endpoints as (id, friendly name), read from the MMDevices
 /// registry key. Friendly names match what Sound settings shows.
+#[cfg(windows)]
 pub fn list_render_endpoints() -> Vec<(String, String)> {
     const BASE: &str = r"SOFTWARE\Microsoft\Windows\CurrentVersion\MMDevices\Audio\Render";
     const NAME_PROP: &str = "{a45c254e-df1c-4efd-8020-67d146a850e0},2";
     let mut out = Vec::new();
-    let Ok(hklm) = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE).open_subkey(BASE) else {
+    let Ok(hklm) = winreg::RegKey::predef(winreg::enums::HKEY_LOCAL_MACHINE).open_subkey(BASE)
+    else {
         return out;
     };
     for id in hklm.enum_keys().filter_map(|r| r.ok()) {
-        let Ok(dev) = hklm.open_subkey(&id) else { continue };
+        let Ok(dev) = hklm.open_subkey(&id) else {
+            continue;
+        };
         let state: u32 = dev.get_value("DeviceState").unwrap_or(0);
         if state != 1 {
             continue;
@@ -135,6 +151,13 @@ pub fn list_render_endpoints() -> Vec<(String, String)> {
     }
     out.sort_by(|a, b| a.1.cmp(&b.1));
     out
+}
+
+/// Endpoint enumeration is only available on Windows. Keeping a host stub
+/// lets workspace tooling check the Windows application from other platforms.
+#[cfg(not(windows))]
+pub fn list_render_endpoints() -> Vec<(String, String)> {
+    Vec::new()
 }
 
 /// First active endpoint id whose friendly name contains `query` (case-insensitive).
@@ -156,7 +179,8 @@ fn capture_thread(
         CoInitializeEx(None, COINIT_MULTITHREADED).ok()?;
         let guard = ComGuard;
 
-        let enumerator: IMMDeviceEnumerator = CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
+        let enumerator: IMMDeviceEnumerator =
+            CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL)?;
         let device: IMMDevice = match endpoint_id {
             Some(id) => {
                 // Registry key names carry the bare GUID; endpoint IDs take
