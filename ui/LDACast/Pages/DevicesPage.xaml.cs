@@ -74,6 +74,31 @@ public sealed partial class DevicesPage : Page
         }
     }
 
+    private void QualityBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is ComboBox box && box.Tag is DeviceEntry d)
+        {
+            for (int i = 0; i < box.Items.Count; i++)
+            {
+                if (box.Items[i] is ComboBoxItem item && (item.Tag as string) == d.Quality)
+                {
+                    box.SelectedIndex = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    private void QualityBox_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is ComboBox box && box.Tag is DeviceEntry d
+            && box.SelectedItem is ComboBoxItem item && item.Tag is string q)
+        {
+            d.Quality = q;
+            Backend.SaveSettings(_settings);
+        }
+    }
+
     private void Stream_Click(object sender, RoutedEventArgs e)
     {
         if ((sender as Button)?.Tag is not DeviceEntry d) return;

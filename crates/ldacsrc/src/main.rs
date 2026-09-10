@@ -60,6 +60,12 @@ struct App {
     format: capture::Format,
     eqmid: i32,
     abr: bool,
+    /// Auto Windows fallback: after a stream was established at least once
+    /// and then lost for this many seconds, hand the radio back to Windows
+    /// and exit. 0 disables. Set from --auto-bt-fallback.
+    fallback_after_s: u32,
+    streamed_once: bool,
+    stream_lost_ms: u32,
     rtp_timestamp: u32,
     pending_samples: u32,
     awaiting_can_send: bool,
@@ -116,6 +122,7 @@ fn main() {
     let mut abr = false;
     let mut check_capture = false;
     let mut capture_device: Option<String> = None;
+    let mut fallback_after_s: u32 = 0;
     let mut iter = args.iter();
     while let Some(arg) = iter.next() {
         match arg.as_str() {
@@ -124,6 +131,13 @@ fn main() {
                 target = Some(parse_addr(v).expect("bad BD_ADDR, expected AA:BB:CC:DD:EE:FF"));
             }
             "--abr" => abr = true,
+            "--auto-bt-fallback" => {
+                fallback_after_s = iter
+                    .next()
+                    .expect("--auto-bt-fallback needs seconds")
+                    .parse()
+                    .expect("--auto-bt-fallback needs a number of seconds");
+            }
             "--capture" => {
                 capture_device = Some(iter.next().expect("--capture needs a device name fragment").clone());
             }
@@ -143,9 +157,11 @@ fn main() {
                 };
             }
             "--help" | "-h" => {
-                println!("ldacsrc [--addr AA:BB:CC:DD:EE:FF] [--quality hq|sq|mq] [--abr] [--capture NAME] [--check-capture] [--list-capture]");
+                println!("ldacsrc [--addr AA:BB:CC:DD:EE:FF] [--quality hq|sq|mq] [--abr] [--capture NAME] [--auto-bt-fallback SECS] [--check-capture] [--list-capture]");
                 println!("without --addr the first audio sink found by inquiry is used");
                 println!("without --capture the default playback device is captured; --list-capture shows names");
+                println!("--auto-bt-fallback SECS hands the radio back to Windows (via ldacmode.ps1, UAC) once");
+                println!("a stream was established and then lost for SECS seconds; 0 (default) disables");
                 return;
             }
             other => panic!("unknown argument {other}"),
@@ -200,6 +216,9 @@ fn main() {
             format,
             eqmid,
             abr,
+            fallback_after_s,
+            streamed_once: false,
+            stream_lost_ms: 0,
             rtp_timestamp: 0,
             pending_samples: 0,
             awaiting_can_send: false,
@@ -607,6 +626,8 @@ unsafe fn start_streaming() { unsafe {
     a.awaiting_can_send = false;
     a.primed = false;
     a.state = State::Streaming;
+    a.streamed_once = true;
+    a.stream_lost_ms = 0;
 
     bt::btstack_run_loop_remove_timer(&mut a.audio_timer);
     bt::btstack_run_loop_set_timer_handler(&mut a.audio_timer, Some(audio_timer_handler));
@@ -774,6 +795,51 @@ unsafe extern "C" fn stats_timer_handler(_t: *mut bt::btstack_timer_source_t) { 
             enc.nudge_quality(-1);
         } else if ring_ms < 30 {
             enc.nudge_quality(1);
+        }
+    }
+
+    // auto Windows fallback: only after a stream existed and then died.
+    // Connecting/Configuring still counts as alive (bonding, setup); the
+    // idle reconnect loop after a loss is what the timer measures.
+    if a.fallback_after_s > 0 && a.streamed_once && !matches!(a.state, State::Streaming | State::Configuring) {
+        if a.stream_lost_ms == 0 {
+            a.stream_lost_ms = now;
+        } else if now.saturating_sub(a.stream_lost_ms) > a.fallback_after_s * 1000 {
+            if !auto_bt_fallback() {
+                a.stream_lost_ms = now;
+            }
+            return;
+        }
+    } else {
+        a.stream_lost_ms = 0;
+    }
+}}
+
+/// The headset went away after streaming: hand the radio back to Windows
+/// and exit. ldacmode.ps1 elevates itself, so this pops one UAC prompt and
+/// the switch continues detached while we exit (exit code 4 = fallback).
+/// Returns false when the switch script is missing, in which case the
+/// caller keeps retrying instead of exiting.
+unsafe fn auto_bt_fallback() -> bool { unsafe {
+    println!("stream lost, handing radio back to Windows");
+    let script = std::env::current_exe()
+        .ok()
+        .and_then(|exe| {
+            exe.ancestors().map(|a| a.join("tools").join("ldacmode.ps1")).find(|p| p.exists())
+        });
+    match script {
+        Some(path) => {
+            let _ = std::process::Command::new("pwsh")
+                .args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"])
+                .arg(&path)
+                .arg("bt")
+                .spawn();
+            println!("Windows-mode switch launched, exiting");
+            std::process::exit(4);
+        }
+        None => {
+            println!("tools/ldacmode.ps1 not found next to the binary, staying put");
+            false
         }
     }
 }}

@@ -82,6 +82,8 @@ public sealed class StreamSession
     public string SinkCaps { get; private set; } = "-";
     public string Negotiated { get; private set; } = "-";
     public string CaptureFmt { get; private set; } = "-";
+    public string CurrentQuality { get; private set; } = "-";
+    public string CurrentDevice { get; private set; } = "-";
     public event Action? DetailUpdated;
 
     private Process? _child;
@@ -90,7 +92,7 @@ public sealed class StreamSession
 
     private StreamSession() { }
 
-    public void Start(DeviceEntry dev, string capture)
+    public void Start(DeviceEntry dev, string capture, bool autoFallback)
     {
         if (Running) return;
         if (!File.Exists(Backend.LdacSrcExe))
@@ -101,7 +103,8 @@ public sealed class StreamSession
         try
         {
             var args = $"--addr {dev.Addr} --quality {dev.Quality}{(dev.Abr ? " --abr" : "")}"
-                + (string.IsNullOrWhiteSpace(capture) ? "" : $" --capture \"{capture.Trim()}\"");
+                + (string.IsNullOrWhiteSpace(capture) ? "" : $" --capture \"{capture.Trim()}\"")
+                + (autoFallback ? " --auto-bt-fallback 30" : "");
             var psi = new ProcessStartInfo(Backend.LdacSrcExe, args)
             {
                 WorkingDirectory = Backend.RepoRoot,
@@ -115,11 +118,13 @@ public sealed class StreamSession
             child.Exited += (_, _) => { if (!ct.IsCancellationRequested) Exited?.Invoke(); };
             child.Start();
             _child = child;
+            CurrentQuality = dev.Quality.ToUpperInvariant() + (dev.Abr ? "+ABR" : "");
+            CurrentDevice = $"{dev.Name} ({dev.Addr})";
             SinkCaps = "-";
             Negotiated = "-";
             CaptureFmt = "-";
             var capNote = string.IsNullOrWhiteSpace(capture) ? "default device" : $"capture \"{capture.Trim()}\"";
-            Log?.Invoke($"streaming to {dev.Name} ({dev.Addr}) [{dev.Quality}{(dev.Abr ? "+abr" : "")}] via {capNote}");
+            Log?.Invoke($"streaming to {dev.Name} ({dev.Addr}) [{dev.Quality}{(dev.Abr ? "+abr" : "")}] via {capNote}{(autoFallback ? ", auto Windows fallback on" : "")}");
             Task.Run(() =>
             {
                 try

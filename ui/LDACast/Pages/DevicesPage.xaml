@@ -57,10 +57,12 @@
                         <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="8">
                             <ComboBox
                                 Header="CODEC quality"
-                                SelectedItem="{Binding Quality, Mode=TwoWay}">
-                                <x:String>hq</x:String>
-                                <x:String>sq</x:String>
-                                <x:String>mq</x:String>
+                                Loaded="QualityBox_Loaded"
+                                SelectionChanged="QualityBox_Changed"
+                                Tag="{Binding}">
+                                <ComboBoxItem Content="HQ - highest (909/990 kbps)" Tag="hq" />
+                                <ComboBoxItem Content="SQ - standard (606/660 kbps)" Tag="sq" />
+                                <ComboBoxItem Content="MQ - mobile, most stable (303/330 kbps)" Tag="mq" />
                             </ComboBox>
                             <CheckBox
                                 VerticalAlignment="Bottom"

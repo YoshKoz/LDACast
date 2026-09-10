@@ -30,6 +30,7 @@ public sealed partial class StreamPage : Page
         DevicePicker.SelectedIndex = Math.Clamp(_settings.Selected, 0, _settings.Devices.Count - 1);
         CapturePicker.ItemsSource = Backend.ListCaptureEndpoints().Select(e => e.Name).ToList();
         CapturePicker.Text = _settings.Capture;
+        FallbackBox.IsChecked = _settings.AutoFallback;
         _pendingAddr = e.Parameter as string;
         RefreshButtons();
         if (_pendingAddr is { Length: > 0 } addr)
@@ -42,7 +43,7 @@ public sealed partial class StreamPage : Page
                 _settings.Selected = Math.Max(0, _settings.Devices.IndexOf(dev));
                 Backend.SaveSettings(_settings);
                 _lastOver = 0;
-                StreamSession.Instance.Start(dev, _settings.Capture);
+                StreamSession.Instance.Start(dev, _settings.Capture, _settings.AutoFallback);
                 RefreshButtons();
             }
         }
@@ -70,6 +71,12 @@ public sealed partial class StreamPage : Page
         Backend.SaveSettings(_settings);
     }
 
+    private void FallbackBox_Changed(object sender, RoutedEventArgs e)
+    {
+        _settings.AutoFallback = FallbackBox.IsChecked == true;
+        Backend.SaveSettings(_settings);
+    }
+
     private void Start_Click(object sender, RoutedEventArgs e)
     {
         var dev = Current;
@@ -78,7 +85,7 @@ public sealed partial class StreamPage : Page
         Backend.SaveSettings(_settings);
         _lastOver = 0;
         HintText.Visibility = Visibility.Collapsed;
-        StreamSession.Instance.Start(dev, _settings.Capture);
+        StreamSession.Instance.Start(dev, _settings.Capture, _settings.AutoFallback);
         RefreshButtons();
     }
 
@@ -132,6 +139,10 @@ public sealed partial class StreamPage : Page
             PacketsText.Text = $"{h.Packets}";
             OverText.Text = $"{h.Over}";
             UnderText.Text = $"{h.Under}";
+            QualityText.Text = StreamSession.Instance.CurrentQuality;
+            EncoderText.Text = h.Bitrate > 0 ? $"{h.Bitrate} kbps (eqmid {h.Eqmid})" : "-";
+            FramesText.Text = $"{h.Fps}/s, {h.Bpf} B";
+            ReconnectsText.Text = $"{h.Reconnects}";
             SinkText.Text = StreamSession.Instance.SinkCaps;
             var cfg = StreamSession.Instance.Negotiated;
             ConfigText.Text = cfg;

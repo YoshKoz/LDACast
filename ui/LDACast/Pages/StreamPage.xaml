@@ -54,6 +54,13 @@
                 Click="Sound_Click"
                 Content="Sound panel"
                 ToolTipService.ToolTip="Windows owns the sample rate: set the capture device to stereo 44.1/48/88.2/96 kHz here, then restart the stream." />
+            <CheckBox
+                x:Name="FallbackBox"
+                VerticalAlignment="Bottom"
+                Content="Auto Windows fallback"
+                ToolTipService.ToolTip="After a stream existed and the headset drops for 30 s, hand the radio back to Windows (one UAC prompt) and stop."
+                Checked="FallbackBox_Changed"
+                Unchecked="FallbackBox_Changed" />
             <TextBlock
                 x:Name="HintText"
                 VerticalAlignment="Center"
@@ -69,6 +76,7 @@
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="Auto" />
             </Grid.RowDefinitions>
@@ -103,6 +111,22 @@
             <StackPanel Grid.Row="1" Grid.Column="3" Orientation="Horizontal" Spacing="6">
                 <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Under:" />
                 <TextBlock x:Name="UnderText" FontWeight="SemiBold" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Quality:" />
+                <TextBlock x:Name="QualityText" FontWeight="SemiBold" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Encoder:" />
+                <TextBlock x:Name="EncoderText" FontWeight="SemiBold" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Frames:" />
+                <TextBlock x:Name="FramesText" FontWeight="SemiBold" Text="-" />
+            </StackPanel>
+            <StackPanel Grid.Row="2" Grid.Column="3" Orientation="Horizontal" Spacing="6">
+                <TextBlock Foreground="{ThemeResource TextFillColorSecondaryBrush}" Text="Reconnects:" />
+                <TextBlock x:Name="ReconnectsText" FontWeight="SemiBold" Text="-" />
             </StackPanel>
         </Grid>
 

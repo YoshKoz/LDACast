@@ -41,4 +41,8 @@ public sealed class Settings
     /// Blank means the Windows default playback device.</summary>
     [JsonPropertyName("capture")]
     public string Capture { get; set; } = "";
+
+    /// <summary>Hand the radio back to Windows after a lost stream (30 s).</summary>
+    [JsonPropertyName("auto_fallback")]
+    public bool AutoFallback { get; set; }
 }
